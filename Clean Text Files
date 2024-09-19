@@ -1,0 +1,67 @@
+import glob
+import os
+
+# Define the directory containing the .txt files
+txt_dir = "/content/drive/MyDrive/Mapping I2P/Mapping_120paper/12otxt"
+
+# List all .txt files in the directory
+txt_files = glob.glob(f"{txt_dir}/*.txt")
+
+# Check how many files were loaded and show a few filenames
+print(f"Number of .txt files found: {len(txt_files)}")
+print("Example files: ", txt_files[:5])  # Show first 5 files as a check
+
+
+import re
+import nltk
+from tqdm import tqdm
+from nltk.corpus import stopwords
+
+# Download stopwords
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
+
+# Define a function to clean each .txt file
+def clean_text(text):
+    # Remove numbers
+    text = re.sub(r'\d+', '', text)
+    # Remove punctuation
+    text = re.sub(r'[^\w\s]', '', text)
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    # Tokenize and remove stopwords
+    words = text.split()
+    cleaned_text = ' '.join([word.lower() for word in words if word.lower() not in stop_words])
+    return cleaned_text
+
+# Directory to save cleaned .txt files
+cleaned_txt_dir = "/content/drive/MyDrive/Mapping I2P/Cleaned_120txt"
+os.makedirs(cleaned_txt_dir, exist_ok=True)
+
+# Process each .txt file
+for txt_file in tqdm(txt_files, desc="Cleaning text files"):
+    try:
+        # Read the content of the .txt file
+        with open(txt_file, "r", encoding='utf-8') as file:
+            text = file.read()
+        
+        # Clean the text
+        cleaned_text = clean_text(text)
+        
+        # Generate output file path
+        output_file_name = os.path.basename(txt_file)
+        output_path = os.path.join(cleaned_txt_dir, output_file_name)
+        
+        # Save the cleaned text to a new .txt file
+        with open(output_path, "w", encoding='utf-8') as output_file:
+            output_file.write(cleaned_text)
+    
+    except Exception as e:
+        print(f"Error processing {txt_file}: {e}")
+
+
+
+# Verify cleaned files
+cleaned_files = glob.glob(f"{cleaned_txt_dir}/*.txt")
+print(f"Number of cleaned .txt files: {len(cleaned_files)}")
+print("Example cleaned files: ", cleaned_files[:5])  # Show first 5 files as a check
