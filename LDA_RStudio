@@ -1,0 +1,137 @@
+Latent Dirichlet Allocation (LDA) in RStudio
+
+Step 1: Install and load required libraries
+# Set your working directory (this should already be set based on your current workspace)
+setwd("C:/Thematic/i2p_lda")
+
+# Install and load required packages
+required_packages <- c("topicmodels", "tm", "tidytext", "ggplot2", "dplyr", "reshape2", "textclean", "wordcloud")
+
+for (pkg in required_packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg, dependencies = TRUE)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+
+Step 2: Load and preprocess the .txt files
+# Load all .txt files from the directory automatically
+all_files <- list.files(path = "C:/Thematic/i2p_lda", pattern = "\\.txt$", full.names = TRUE)
+
+# Read the content of each .txt file into a list
+all_texts <- lapply(all_files, function(file) {
+  tryCatch({
+    readLines(file, warn = FALSE)  # Read the file content
+  }, error = function(e) {
+    cat("Error reading file:", file, "\n", conditionMessage(e), "\n")
+    return(NULL)
+  })
+})
+
+# Remove any NULL entries (in case any files could not be read)
+all_texts <- all_texts[!sapply(all_texts, is.null)]
+
+if (length(all_texts) == 0) {
+  stop("No valid .txt files could be read.")
+}
+
+# Convert the list of texts into a Volatile Corpus (VCorpus)
+document <- VCorpus(VectorSource(all_texts))
+
+# Text preprocessing steps
+document <- tm_map(document, content_transformer(tolower))           # Convert text to lower case
+document <- tm_map(document, removeNumbers)                          # Remove numbers
+document <- tm_map(document, removeWords, stopwords("english"))      # Remove English stopwords
+document <- tm_map(document, removePunctuation)                      # Remove punctuation
+document <- tm_map(document, stripWhitespace)                        # Remove extra white spaces
+document <- tm_map(document, content_transformer(gsub), pattern = "\\b\\w{1,2}\\b", replacement = "") # Remove short words (1-2 letters)
+
+
+Step 3: Create the Document-Term Matrix (DTM)
+
+# Create a Document-Term Matrix (DTM)
+dtm <- DocumentTermMatrix(document)
+
+# Check if the DTM is valid (i.e., not empty)
+if (sum(as.matrix(dtm)) == 0) {
+  stop("The Document-Term Matrix is empty. Ensure there is valid text in the files.")
+}
+
+# Remove sparse terms (terms that appear in very few documents) to optimize performance
+dtm <- removeSparseTerms(dtm, 0.99)
+
+# Convert DTM to a matrix to check its contents
+dtm_matrix <- as.matrix(dtm)
+print(dtm_matrix[1:10, 1:10])  # Print the first 10 rows and columns for inspection
+
+
+
+Step 4: Fit the LDA Model
+# Set the number of topics to 12
+k <- 12
+
+# Fit the LDA model with the specified number of topics
+set.seed(1234)  # Setting seed for reproducibility
+lda_model <- LDA(dtm, k = k, control = list(seed = 1234))
+
+# Check the top terms for each topic
+lda_terms <- tidy(lda_model, matrix = "beta")
+print(lda_terms)
+
+# Group the top 10 terms by topic
+top_terms <- lda_terms %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+# Print the top 10 terms for each topic
+print(top_terms)
+
+
+Step 5: Visualizing the Top Terms for Each Topic
+
+# Visualization: Top 10 Terms for Each Topic
+library(ggplot2)
+library(tidytext)  # For text visualization functions
+
+# Reorder the terms for better plotting
+top_terms <- top_terms %>%
+  mutate(term = reorder_within(term, beta, topic))
+
+# Plot the top terms for each topic
+ggplot(top_terms, aes(x = beta, y = term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  scale_y_reordered() +
+  labs(title = "Top 10 Terms for Each Topic",
+       x = "Beta (Term Importance)",
+       y = "Term") +
+  theme_minimal()
+
+# Save the plot to a PDF file
+ggsave("top_terms_per_topic.pdf", width = 10, height = 8)
+
+
+Code to Generate a Combined Word Cloud
+
+# Install and load the wordcloud library if not already installed
+if (!require("wordcloud")) {
+  install.packages("wordcloud", dependencies = TRUE)
+  library(wordcloud)
+}
+
+# Combine the terms and their beta values across all topics
+combined_terms <- lda_terms %>%
+  group_by(term) %>%
+  summarize(total_beta = sum(beta)) %>%
+  arrange(desc(total_beta))
+
+# Create a single word cloud for all topics
+wordcloud(words = combined_terms$term, freq = combined_terms$total_beta, max.words = 100, colors = brewer.pal(8, "Dark2"))
+
+# Save the combined word cloud as a PNG file
+png("combined_wordcloud.png", width = 800, height = 800)
+wordcloud(words = combined_terms$term, freq = combined_terms$total_beta, max.words = 100, colors = brewer.pal(8, "Dark2"))
+dev.off()
